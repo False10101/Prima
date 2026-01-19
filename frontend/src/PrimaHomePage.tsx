@@ -27,7 +27,7 @@ interface UploadResponse {
 }
 
 // --- Configuration ---
-const API_URL = import.meta.env.BASE_URL;
+const API_URL = import.meta.env.VITE_API_URL;
 const STORAGE_KEY = "prima_active_session"; 
 const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000; 
 
