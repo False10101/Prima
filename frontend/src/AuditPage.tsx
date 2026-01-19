@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Download, FlaskConical, AlertTriangle, CheckCircle2,
-  Copy, Database, Search, Filter, Plus, Lightbulb, Loader2, BarChart3
+  ArrowLeft, FlaskConical, AlertTriangle, CheckCircle2,
+  Copy, Database, Search, Loader2, BarChart3
 } from 'lucide-react';
 import {
   BarChart, Bar, ResponsiveContainer, Tooltip, Cell

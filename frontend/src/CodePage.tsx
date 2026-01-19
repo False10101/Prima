@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
-  CheckCircle2, Copy, Download, Terminal, 
+  CheckCircle2, Copy, Terminal, 
   Clock, Zap, FileCode, ArrowLeft, Loader2
 } from 'lucide-react';
 

@@ -12,10 +12,8 @@ import {
     ArrowRight,
     Code2,
     HelpCircle,
-    Terminal,
     X,
     ShieldCheck,
-    Cpu,
     Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';

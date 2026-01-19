@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   Play, Plus, Trash2, ArrowDown, Settings2,
-  Table2, Loader2, X,
+  Table2, Loader2,
   Wand2, Layers, AlertCircle, ArrowLeft, CheckCircle2
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 // --- Types ---
 interface Step {
