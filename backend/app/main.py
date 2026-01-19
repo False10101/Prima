@@ -40,6 +40,7 @@ app = FastAPI(
 
 origins = [
     "http://localhost:5173",  # Vite React Port (if you use Vite)
+    "https://prima.minpainghein.com"
 ]
 
 app.add_middleware(
