@@ -1,33 +1,22 @@
 from app.models.recipe import Recipe
 
 def get_requirements() -> list[str]:
+    # Only data processing libraries
     return [
-        "pandas", "numpy", "scipy", "scikit-learn", 
-        "xgboost", "lightgbm", "catboost", "mlxtend", "category_encoders"
+        "pandas", "numpy", "scipy", "scikit-learn", "category_encoders"
     ]
 
 def generate_pipeline_code(recipe: Recipe) -> str:
-    # --- 1. GLOBAL IMPORTS (VERIFIED) ---
+    # --- 1. GLOBAL IMPORTS (CLEANED) ---
     imports = {
         "import numpy as np",
         "import pandas as pd",
         "import warnings",
         "from scipy.stats import skew, boxcox_normmax",
         "from scipy.special import boxcox1p",
-        "from sklearn.pipeline import make_pipeline, Pipeline",
-        "from sklearn.compose import ColumnTransformer",
-        "from sklearn.preprocessing import (StandardScaler, MinMaxScaler, RobustScaler, \n    MaxAbsScaler, OneHotEncoder, OrdinalEncoder, FunctionTransformer, PolynomialFeatures)",
+        "from sklearn.preprocessing import (StandardScaler, MinMaxScaler, RobustScaler, \n    MaxAbsScaler, OneHotEncoder, OrdinalEncoder, PolynomialFeatures)",
         "from sklearn.impute import SimpleImputer, KNNImputer",
-        "from sklearn.model_selection import KFold, cross_val_score, train_test_split",
-        "from sklearn.metrics import mean_squared_error, r2_score, accuracy_score",
-        "from sklearn.linear_model import RidgeCV, LassoCV, ElasticNetCV, LogisticRegression",
-        # FIX: Removed StackingCVRegressor from sklearn (It belongs to mlxtend)
-        "from sklearn.ensemble import (RandomForestRegressor, GradientBoostingRegressor, \n    ExtraTreesRegressor, VotingRegressor, AdaBoostRegressor)", 
-        "from sklearn.svm import SVR, SVC",
-        "from xgboost import XGBRegressor, XGBClassifier",
-        "from lightgbm import LGBMRegressor, LGBMClassifier",
-        # FIX: Explicit import for the Stacking Regressor
-        "from mlxtend.regressor import StackingCVRegressor", 
+        "from sklearn.preprocessing import LabelEncoder",
         "import category_encoders as ce",
         "warnings.filterwarnings('ignore')"
     }
@@ -36,7 +25,6 @@ def generate_pipeline_code(recipe: Recipe) -> str:
     cleaning_code = []     
     feature_eng_code = []  
     encoding_code = []     
-    modeling_code = []     
     
     # --- PARSER LOOP ---
     for step in recipe.steps:
@@ -80,7 +68,6 @@ def generate_pipeline_code(recipe: Recipe) -> str:
             cleaning_code.append(f"df['{col}'] = df['{col}'].fillna({val_str})")
             
         elif op == "fill_na_groupby":
-            # e.g. Fill LotFrontage by Neighborhood median
             group_col = params.get('group_col')
             strategy = params.get('strategy', 'median')
             cleaning_code.append(f"# Fill {col} by {group_col} {strategy}")
@@ -92,8 +79,31 @@ def generate_pipeline_code(recipe: Recipe) -> str:
             cleaning_code.append(f"df['{col}'] = imputer.fit_transform(df[['{col}']])")
 
         # ====================================================
-        #  GROUP 3: TRANSFORMATION
+        #  GROUP 3: DATES (ESSENTIAL)
         # ====================================================
+        elif op == "extract_date_parts":
+            feature_eng_code.append(f"# Extract Date Parts for {col}")
+            feature_eng_code.append(f"df['{col}'] = pd.to_datetime(df['{col}'], errors='coerce')")
+            feature_eng_code.append(f"df['{col}_year'] = df['{col}'].dt.year")
+            feature_eng_code.append(f"df['{col}_month'] = df['{col}'].dt.month")
+            feature_eng_code.append(f"df['{col}_day'] = df['{col}'].dt.day")
+            feature_eng_code.append(f"df['{col}_dow'] = df['{col}'].dt.dayofweek")
+            if params.get('drop_original', True):
+                feature_eng_code.append(f"df.drop(['{col}'], axis=1, inplace=True)")
+
+        # ====================================================
+        #  GROUP 4: MATH & TRANSFORM
+        # ====================================================
+        elif op == "bin_numeric":
+            bins = params.get('bins', 5)
+            labels = params.get('labels', False)
+            strategy = params.get('strategy', 'quantile')
+            feature_eng_code.append(f"# Binning {col}")
+            if strategy == 'quantile':
+                feature_eng_code.append(f"df['{col}'] = pd.qcut(df['{col}'], q={bins}, labels={labels}, duplicates='drop').cat.codes")
+            else:
+                feature_eng_code.append(f"df['{col}'] = pd.cut(df['{col}'], bins={bins}, labels={labels}).cat.codes")
+
         elif op == "log_transform":
             feature_eng_code.append(f"df['{col}'] = np.log1p(df['{col}'])")
             
@@ -103,7 +113,11 @@ def generate_pipeline_code(recipe: Recipe) -> str:
 # Skew correction for {col}
 skewness = skew(df['{col}'].dropna())
 if abs(skewness) > {thresh}:
-    lam = boxcox_normmax(df['{col}'] + 1)
+    clean_col = df['{col}'].fillna(0)
+    min_val = clean_col.min()
+    if min_val <= 0:
+        df['{col}'] += (abs(min_val) + 1)
+    lam = boxcox_normmax(df['{col}'].fillna(df['{col}'].mean()))
     df['{col}'] = boxcox1p(df['{col}'], lam)
 """
             feature_eng_code.append(block)
@@ -119,95 +133,50 @@ if abs(skewness) > {thresh}:
             feature_eng_code.append(f"# Poly features for {col}")
             feature_eng_code.append(f"poly = PolynomialFeatures(degree={degree}, include_bias=False)")
             feature_eng_code.append(f"poly_data = poly.fit_transform(df[['{col}']])")
-            feature_eng_code.append(f"df = pd.concat([df, pd.DataFrame(poly_data, index=df.index).add_prefix('{col}_poly_')], axis=1)")
+            feature_eng_code.append(f"new_cols = [f'{col}_poly_{{i}}' for i in range(1, poly_data.shape[1] + 1)]")
+            feature_eng_code.append(f"df = pd.concat([df, pd.DataFrame(poly_data, columns=new_cols, index=df.index)], axis=1)")
 
         # ====================================================
-        #  GROUP 4: SCALERS
+        #  GROUP 5: SCALERS & ENCODING
         # ====================================================
-        elif op == "standard_scaler":
-            feature_eng_code.append(f"df['{col}'] = StandardScaler().fit_transform(df[['{col}']])")
-        elif op == "minmax_scaler":
-            feature_eng_code.append(f"df['{col}'] = MinMaxScaler().fit_transform(df[['{col}']])")
-        elif op == "robust_scaler":
-            feature_eng_code.append(f"df['{col}'] = RobustScaler().fit_transform(df[['{col}']])")
+        elif op in ["standard_scaler", "minmax_scaler", "robust_scaler", "maxabs_scaler"]:
+            mapper = {
+                "standard_scaler": "StandardScaler",
+                "minmax_scaler": "MinMaxScaler",
+                "robust_scaler": "RobustScaler",
+                "maxabs_scaler": "MaxAbsScaler"
+            }
+            feature_eng_code.append(f"df['{col}'] = {mapper[op]}().fit_transform(df[['{col}']])")
 
-        # ====================================================
-        #  GROUP 5: ENCODING
-        # ====================================================
-        elif op == "get_dummies" or op == "one_hot_encode":
-            if col == "ALL":
-                encoding_code.append(f"# Auto-dummy all remaining categorical features")
-                encoding_code.append("df = pd.get_dummies(df)")
-            else:
-                encoding_code.append(f"df = pd.get_dummies(df, columns=['{col}'], drop_first=True)")
+        elif op == "one_hot_encode":
+            encoding_code.append(f"df = pd.get_dummies(df, columns=['{col}'], drop_first=True)")
 
         elif op == "label_encode":
             encoding_code.append(f"df['{col}'] = LabelEncoder().fit_transform(df['{col}'].astype(str))")
+
+        elif op == "ordinal_encode":
+            encoding_code.append(f"df['{col}'] = OrdinalEncoder().fit_transform(df[['{col}']])")
 
         elif op == "target_encode":
             target_c = params.get('target_col', 'SalePrice')
             encoding_code.append(f"encoder = ce.TargetEncoder(cols=['{col}'])")
             encoding_code.append(f"df['{col}'] = encoder.fit_transform(df['{col}'], df['{target_c}'])")
 
-        # ====================================================
-        #  GROUP 6: MODELS
-        # ====================================================
-        elif op == "stacking_ensemble":
-            modeling_code.append("""
-# --- STACKING ENSEMBLE ---
-kf = KFold(n_splits=10, shuffle=True, random_state=42)
-
-# Base Learners
-ridge = make_pipeline(RobustScaler(), RidgeCV(cv=kf))
-lasso = make_pipeline(RobustScaler(), LassoCV(cv=kf))
-elastic = make_pipeline(RobustScaler(), ElasticNetCV(cv=kf))
-gbr = GradientBoostingRegressor(n_estimators=3000, learning_rate=0.05, max_depth=4, 
-                                max_features='sqrt', loss='huber', random_state=42)
-xgb = XGBRegressor(n_estimators=3000, learning_rate=0.01, max_depth=3, 
-                   objective='reg:squarederror', n_jobs=-1)
-lgbm = LGBMRegressor(objective='regression', n_estimators=5000, learning_rate=0.01)
-
-# Meta Learner (Using mlxtend StackingCVRegressor)
-stack = StackingCVRegressor(regressors=(ridge, lasso, elastic, gbr, xgb, lgbm),
-                            meta_regressor=xgb,
-                            use_features_in_secondary=True)
-
-print("Fitting Stacking Ensemble... (This may take a while)")
-stack.fit(np.array(X), np.array(y))
-preds = stack.predict(np.array(X))
-""")
-
-        elif op == "voting_ensemble":
-             modeling_code.append("""
-# --- VOTING REGRESSOR ---
-r1 = GradientBoostingRegressor(random_state=1)
-r2 = RandomForestRegressor(random_state=1)
-r3 = XGBRegressor()
-vote = VotingRegressor([('gb', r1), ('rf', r2), ('xgb', r3)])
-vote.fit(X, y)
-preds = vote.predict(X)
-""")
-
-        elif op == "xgboost_model":
-            modeling_code.append("model = XGBRegressor(n_estimators=1000, learning_rate=0.05)")
-            modeling_code.append("model.fit(X, y)")
-            modeling_code.append("preds = model.predict(X)")
-
     # --- 3. ASSEMBLE SCRIPT ---
     script = []
     
     script.append("# ==========================================")
-    script.append("# GENERATED PIPELINE CODE")
+    script.append("# GENERATED PREPROCESSING PIPELINE")
     script.append("# ==========================================")
     script.append("\n".join(sorted(list(imports))))
     
     script.append("\n# --- 1. LOAD DATA ---")
     script.append("print('Loading data...')")
-    script.append("df = pd.read_csv('dataset.csv') # CHANGE THIS PATH")
-    script.append("target_col = 'SalePrice' if 'SalePrice' in df.columns else 'target'")
+    script.append("# TODO: Replace with your actual file path")
+    script.append("df = pd.read_csv('dataset.csv')") 
     
     if cleaning_code:
-        script.append("\n# --- 2. CLEANING & IMPUTATION ---")
+        script.append("\n# --- 2. CLEANING ---")
         script.append("\n".join(cleaning_code))
         
     if feature_eng_code:
@@ -218,19 +187,12 @@ preds = vote.predict(X)
         script.append("\n# --- 4. ENCODING ---")
         script.append("\n".join(encoding_code))
         
-    script.append("\n# --- 5. PREPARE X and y ---")
-    script.append("if target_col in df.columns:")
-    script.append("    y = df[target_col]")
-    script.append("    X = df.drop([target_col], axis=1)")
-    # Default fallback if user forgot explicit encoding step
-    script.append("    # Auto-dummy any remaining categories if needed")
-    script.append("    X = pd.get_dummies(X)")
-    script.append("else:")
-    script.append("    X = pd.get_dummies(df)")
-    
-    if modeling_code:
-        script.append("\n# --- 6. MODELING ---")
-        script.append("\n".join(modeling_code))
-        script.append("\nprint('Pipeline Finished.')")
+    script.append("\n# --- 5. EXPORT / FINISH ---")
+    script.append("# Auto-dummy any remaining categories (Safety Step)")
+    script.append("df = pd.get_dummies(df)")
+    script.append("\nprint(f'Preprocessing complete. Final shape: {df.shape}')")
+    script.append("# Save the processed file")
+    script.append("df.to_csv('processed_data.csv', index=False)")
+    script.append("print('Saved to processed_data.csv')")
         
     return "\n".join(script)
