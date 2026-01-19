@@ -1,1 +1,5 @@
 temp_uploads/
+
+.env
+.env.local
+.env.*.local

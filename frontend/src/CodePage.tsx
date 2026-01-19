@@ -23,7 +23,7 @@ interface GenerateResponse {
 }
 
 // --- Configuration ---
-const API_URL = "http://localhost:8000/api";
+const API_URL = import.meta.env.BASE_URL;
 
 // --- Components ---
 

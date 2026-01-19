@@ -11,7 +11,7 @@ import {
 import { motion } from 'framer-motion';
 
 // --- Configuration ---
-const API_URL = "http://localhost:8000/api";
+const API_URL = import.meta.env.BASE_URL;
 
 // --- Types ---
 interface BackendColumnData {
