@@ -229,7 +229,7 @@ export default function AuditPage() {
       if (!sessionId) return;
       try {
         setLoading(true);
-        const res = await axios.get(`${API_URL}/analyze/${sessionId}`);
+        const res = await axios.get(`${API_URL}/api/analyze/${sessionId}`);
         setStats(res.data);
       } catch (err) {
         console.error(err);
