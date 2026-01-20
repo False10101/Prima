@@ -269,7 +269,7 @@ export default function RecipePage() {
     if (!sessionId) return;
     const fetchColumns = async () => {
       try {
-        const res = await axios.get(`${API_URL}/analyze/${sessionId}`);
+        const res = await axios.get(`${API_URL}/api/analyze/${sessionId}`);
         const cols = res.data.columns.map((c: any) => c.name);
         setMasterColumns(cols);
       } catch (e) { console.error("Could not load original columns", e); }
@@ -280,7 +280,7 @@ export default function RecipePage() {
   useEffect(() => {
     const fetchSchema = async () => {
       try {
-        const res = await axios.get(`${API_URL}/options`);
+        const res = await axios.get(`${API_URL}/api/options`);
         setSchema(res.data.operations);
       } catch (e) { console.error("Failed to load pipeline options", e); }
     };
@@ -295,7 +295,7 @@ export default function RecipePage() {
       setError(null);
       try {
         const payload = { session_id: sessionId, steps: steps };
-        const res = await axios.post(`${API_URL}/preview`, payload);
+        const res = await axios.post(`${API_URL}/api/preview`, payload);
         setPreview(res.data);
       } catch (err: any) {
         console.error(err);
