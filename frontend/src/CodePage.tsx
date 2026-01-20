@@ -71,7 +71,7 @@ export default function ElixirPage() {
     const fetchCode = async () => {
         try {
             const payload = { session_id: sessionId, steps: steps };
-            const res = await axios.post(`${API_URL}/generate-code`, payload);
+            const res = await axios.post(`${API_URL}/api/generate-code`, payload);
             setData(res.data);
         } catch (e) {
             console.error("Error generating code", e);
